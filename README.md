@@ -10,6 +10,8 @@ This will download the required data from CDS, apply basic preprocessing (only r
 ## A note on parallelism
 We generate an array with one job per variable. Within these jobs, the data is requested yearly and at most 16 (hard-coded in `./slurm/launch.sh`) requests are sent concurrently. This is because the CDS API is quite slow and requests are queued anyways. 
 
+Note that the regridding and aggregations are applied to the yearly files before having all of them be merged with `cdo mergetime`. 
+
 ## To do
-- [ ] add support for regridding
+- [x] add support for regridding
 - [ ] add support for variable pairs (e.g. `u` and `v` at the same time to compute `stream`)

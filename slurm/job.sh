@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source ./env/modules.sh
+
 CUMULATIVE_VARIABLES=(
     "total_column_water_vapour" 
     "total_column_cloud_ice_water" 
@@ -61,11 +63,31 @@ options+="--area ${AREA[@]} " && echo " * area: ${AREA[@]}"
 options+="--format ${FORMAT} " && echo " * format: ${FORMAT}"
 
 # get paths 
-filename="era5_cds-${variable}-${min_year}-${max_year}-${FREQUENCY}-${RESOLUTION}"
+if [ -z "$OUT_FREQUENCY" ]; then
+    FILE_FREQUENCY=$BASE_FREQUENCY
+else
+    FILE_FREQUENCY=$OUT_FREQUENCY
+    if [ -z "$AGGREGATION" ]; then
+        echo "No aggregation method specified while output frequency is set. Please specify an aggregation method."
+        exit 1
+    fi
+fi
+
+if [ -z "$OUT_RESOLUTION" ]; then
+    FILE_RESOLUTION=$BASE_RESOLUTION
+else
+    FILE_RESOLUTION=$OUT_RESOLUTION
+    if [ -z "$REGRID_GRID" ] || [ -z "$REGRID_CDO_FN" ]; then
+        echo "Regrid method and grid not both specified while output resolution is set. Please specify a regrid method and grid."
+        exit 1
+    fi
+fi
+
+filename="era5_cds-${variable}-${min_year}-${max_year}-${FILE_FREQUENCY}-${FILE_RESOLUTION}"
 # tmp path
 tmp_path=$TMPDIR/$filename.nc
 # final path
-final_path="${DATA_ROOT_DIR}/${OUTPUT_DIR}/${min_year}-${max_year}-${FREQUENCY}-${RESOLUTION}/$filename.zarr"
+final_path="${DATA_ROOT_DIR}/${OUTPUT_DIR}/${min_year}-${max_year}-${FILE_FREQUENCY}-${FILE_RESOLUTION}/$filename.zarr"
 
 mkdir -p `dirname $tmp_path`
 mkdir -p `dirname $final_path`
@@ -80,15 +102,19 @@ echo " * n_cpus: $n_cpus"
 
 # download the data
 tmp_paths=()
-for i in $(seq 0 $n_cpus ${#YEARS[@]}); do
+for i in $(seq 0 $n_cpus $(( ${#YEARS[@]} - 1 ))); do
     for j in $(seq 0 $((n_cpus - 1))); do
+        index=$((i+j))
+        if [ $index -ge ${#YEARS[@]} ]; then
+            break
+        fi
         (
             # get the year
-            index=$((i+j)) && y=${YEARS[$index]}
+            y=${YEARS[$index]}
 
             # get sub path
-            sub_filename=era5_cds-${variable}-${y}-${FREQUENCY}-${RESOLUTION}
-            sub_tmp_path=$TMP_DIR/$sub_filename
+            sub_filename=era5_cds-${variable}-${y}-${FILE_FREQUENCY}-${FILE_RESOLUTION}
+            sub_tmp_path=$TMPDIR/$sub_filename
 
             # copy options and add arguments
             sub_options=$options
@@ -98,33 +124,50 @@ for i in $(seq 0 $n_cpus ${#YEARS[@]}); do
             # launch download
             python ./src/download_era5_cds.py $sub_options
 
+            echo "Successfully downloaded $sub_tmp_path.orig.nc"
+
+            # cdo pipeline
+            cdo_pipeline=" -b F32 "
+
             # aggregate
-            if [ -z "$AGGREGATE" ]; then
-                mv $sub_tmp_path.orig.nc $sub_tmp_path.nc
+            if [ -z "$AGGREGATION" ]; then
+                echo "No aggregation method specified"
             else
-                if  [ "$AGGREGATE" == "daily" ]; then
-                    if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then # cumulative variables
-                        cdo -b F32 daysum $sub_tmp_path.orig.nc $sub_tmp_path.nc
-                    else
-                        cdo -b F32 daymean $sub_tmp_path.orig.nc $sub_tmp_path.nc
-                    fi
-                elif [ "$AGGREGATE" == "monthly" ]; then
-                    if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then # cumulative variables
-                        cdo -b F32 monsum $sub_tmp_path.orig.nc $sub_tmp_path.nc
-                    else
-                        cdo -b F32 monmean $sub_tmp_path.orig.nc $sub_tmp_path.nc
-                    fi
-                elif [ "$AGGREGATE" == "yearly" ]; then
-                    if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then # cumulative variables
-                        cdo -b F32 yearsum $sub_tmp_path.orig.nc $sub_tmp_path.nc
-                    else
-                        cdo -b F32 yearmean $sub_tmp_path.orig.nc $sub_tmp_path.nc
-                    fi
-                else
-                    echo "Unknown aggregation method: $AGGREGATE"
+                # check 
+                if [[ "$AGGREGATION" != "day" && "$AGGREGATION" != "mon" && "$AGGREGATION" != "year" ]]; then
+                    echo "Unknown aggregation method: $AGGREGATION"
                     exit 1
                 fi
+                agg=$AGGREGATION
+
+                # check if cumulative variable
+                if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then # cumulative variables
+                    agg+="sum"
+                else
+                    agg+="mean"
+                fi
+
+                # add to cdo pipeline
+                cdo_pipeline+=" -$agg "
             fi
+
+            # regrid
+            if [ -z "$REGRID_GRID" ] || [ -z "$REGRID_CDO_FN" ] ; then
+                echo "No regrid method and grid specified"
+            else
+                # TODO: check validity but too many possibilities so not implemented
+                # add to cdo pipeline
+                cdo_pipeline+=" -$REGRID_CDO_FN,$REGRID_GRID "
+            fi
+
+            # apply cdo pipeline
+            echo "Applying cdo pipeline: $cdo_pipeline"
+            cdo $cdo_pipeline $sub_tmp_path.orig.nc $sub_tmp_path.nc
+
+            # check if cdo was successful
+            cdo sinfo $sub_tmp_path.nc
+
+            # remove original file
             rm $sub_tmp_path.orig.nc
 
             # append to tmp_paths
@@ -132,12 +175,15 @@ for i in $(seq 0 $n_cpus ${#YEARS[@]}); do
         )&
     done
     wait
+    echo "Done with year $y"
 done
 
 # mergetime and delete
+echo "Merging files: ${tmp_paths[@]}"
 cdo mergetime ${tmp_paths[@]} $tmp_path && rm ${tmp_paths[@]}
 
 # compress and delete
+echo "Saving to zarr: $final_path"
 python ./src/convert_zarr.py --input_file $tmp_path --output_file $final_path && rm $tmp_path
 
 

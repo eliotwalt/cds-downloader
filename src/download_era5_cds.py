@@ -12,8 +12,6 @@ import yaml
 
 import logging
 
-from arrays import n_years_single_var_all_levels, single_year_single_var_all_levels
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
@@ -104,6 +102,7 @@ def download(
     msg += f" * resource: {cds_resource}\n"
     for k, v in request_kwargs.items():
         msg += f" * {k}: {v}\n"
+    msg += f" * path: {path}"
     logger.info(msg)
     
     c.retrieve(
