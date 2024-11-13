@@ -1,0 +1,19 @@
+# usual python / ipython stuff
+*.pyc
+*.egg-info
+*.egg
+*.pyo
+*.swp
+*.swo
+__pycache__
+.ipynb_checkpoints
+
+# virtualenv
+venv
+
+# perso
+logs
+*.log
+draft
+drafts
+*.draft

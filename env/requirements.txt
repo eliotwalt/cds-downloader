@@ -1,0 +1,7 @@
+cdsapi
+PyYAML
+netcdf4 
+h5netcdf 
+zarr 
+dask
+xarray[complete]
