@@ -63,11 +63,12 @@ options+="--format ${FORMAT} " && echo " * format: ${FORMAT}"
 # get paths 
 filename="era5_cds-${variable}-${min_year}-${max_year}-${FREQUENCY}-${RESOLUTION}"
 # tmp path
-tmp_path=$TMP_DIR/$filename.nc
-#mkdir -p `basename $tmp_path`
+tmp_path=$TMPDIR/$filename.nc
 # final path
-source $host_config
 final_path="${DATA_ROOT_DIR}/${OUTPUT_DIR}/${min_year}-${max_year}-${FREQUENCY}-${RESOLUTION}/$filename.zarr"
+
+mkdir -p `dirname $tmp_path`
+mkdir -p `dirname $final_path`
 
 echo "Paths:"
 echo " * tmp path: $tmp_path"

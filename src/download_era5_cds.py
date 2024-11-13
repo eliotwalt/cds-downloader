@@ -56,6 +56,7 @@ HOURLY_TIMES = [
 
 def as_list(x: Union[Any, list[Any]]) -> list[Any]:
     if not isinstance(x, list): x = list(x)
+    x = [str(i) for i in x]
     return x
 
 def download(
@@ -81,7 +82,8 @@ def download(
         'month': as_list(months),
         'day': as_list(days),
         'time': as_list(times),
-        'format': format 
+        'data_format': format,
+        "download_format": "unarchived"
     }
     
     # add area
@@ -91,8 +93,8 @@ def download(
     # add level and select resource
     # select cds resource
     if levels is not None:
-        level = as_list(levels)
-        request_kwargs["level"] = levels
+        levels = as_list(levels)
+        request_kwargs["pressure_level"] = levels
         cds_resource = PRESSURE_LEVELS_ERA5
     else:
         cds_resource = SINGLE_LEVEL_ERA5

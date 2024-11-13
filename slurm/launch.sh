@@ -34,4 +34,5 @@ sbatch --cpus-per-task=$cpus_per_task \
        --error=./logs/%A_%a.out \
        --job-name=dl_era5_cds \
        --array=0-$((num_jobs-1)) \
-       --wrap="./slurm/job.sh --config $config --host_config $host_config"
+       --constraint=scratch-node \
+       --wrap="./env/modules.sh && source ./env/venv/bin/activate && ./slurm/job.sh --config $config --host_config $host_config"
