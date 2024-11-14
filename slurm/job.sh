@@ -111,7 +111,7 @@ else
     fi
 fi
 
-filename="era5_cds-${variable}-${min_year}-${max_year}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}"
+filename="era5_cds_${variable}-${min_year}-${max_year}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}"
 # tmp path
 tmp_path=$SCRATCH_DATA_DIR/$filename.nc
 # final path
@@ -178,7 +178,7 @@ echo " * n_cpus: $n_cpus"
 # precompute the tmp paths
 tmp_paths=()
 for y in "${YEARS[@]}"; do
-    sub_filename=era5_cds-${variable}-${y}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}.nc
+    sub_filename=era5_cds_${variable}-${y}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}.nc
     sub_tmp_path=$SCRATCH_DATA_DIR/$sub_filename
     tmp_paths+=($sub_tmp_path)
 done
