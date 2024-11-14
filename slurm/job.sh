@@ -3,17 +3,45 @@
 source ./env/modules.sh
 
 CUMULATIVE_VARIABLES=(
-    "total_column_water_vapour" 
-    "total_column_cloud_ice_water" 
-    "total_column_cloud_liquid_water" 
-    "total_column_rain_water" 
-    "total_column_snow_water" 
-    "total_column_graupel_water" 
-    "total_precipitation"
-    "total_precipitation_6hr"
-    "total_precipitation_3hr"
-    "total_precipitation_1hr"
-    "total_precipitation_12hr"
+   "lspf" "large_scale_precipitation_fraction"
+   "uvb" "downward_uv_radiation_at_the_surface"
+   "bld" "boundary_layer_dissipation"
+   "sshf" "surface_sensible_heat_flux"
+   "slhf" "surface_latent_heat_flux"
+   "ssrd" "surface_solar_radiation_downwards"
+   "strd" "surface_thermal_radiation_downwards"
+   "ssr" "surface_net_solar_radiation"
+   "str" "surface_net_thermal_radiation"
+   "tsr" "top_net_solar_radiation"
+   "ttr" "top_net_thermal_radiation"
+   "ewss" "eastward_turbulent_surface_stress"
+   "nsss" "northward_turbulent_surface_stress"
+   "lgws" "eastward_gravity_wave_surface_stress"
+   "mgws" "northward_gravity_wave_surface_stress"
+   "gwd" "gravity_wave_dissipation"
+   "tsrc" "top_net_solar_radiation_clear_sky"
+   "ttrc" "top_net_thermal_radiation_clear_sky"
+   "ssrc" "surface_net_solar_radiation_clear_sky"
+   "strc" "surface_net_thermal_radiation_clear_sky"
+   "tisr" "toa_incident_solar_radiation"
+   "vimd" "vertically_integrated_moisture_divergence"
+   "fdir" "total_sky_direct_solar_radiation_at_surface"
+   "cdir" "clear_sky_direct_solar_radiation_at_surface"
+   "ssrdc" "surface_solar_radiation_downward_clear_sky"
+   "strdc" "surface_thermal_radiation_downward_clear_sky"
+   "sro" "surface_runoff"
+   "ssro" "sub_surface_runoff"
+   "es" "snow_evaporation"
+   "smlt" "snowmelt"
+   "lsp" "large_scale_precipitation"
+   "cp" "convective_precipitation"
+   "sf" "snowfall"
+   "e" "evaporation"
+   "ro" "runoff"
+   "tp" "total_precipitation"
+   "csf" "convective_snowfall"
+   "lsf" "large_scale_snowfall"
+   "pev" "potential_evaporation"
 )
 
 while [[ "$#" -gt 0 ]]; do
@@ -83,9 +111,9 @@ else
     fi
 fi
 
-filename="era5_cds-${variable}-${min_year}-${max_year}-${FILE_FREQUENCY}-${FILE_RESOLUTION}"
+filename="era5_cds-${variable}-${min_year}-${max_year}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}"
 # tmp path
-tmp_path=$TMPDIR/$filename.nc
+tmp_path=$SCRATCH_DATA_DIR/$filename.nc
 # final path
 final_path="${DATA_ROOT_DIR}/${OUTPUT_DIR}/${min_year}-${max_year}-${FILE_FREQUENCY}-${FILE_RESOLUTION}/$filename.zarr"
 
@@ -96,12 +124,67 @@ echo "Paths:"
 echo " * tmp path: $tmp_path"
 echo " * final path: $final_path"
 
+# get cdo pipeline
+# cdo pipeline
+cdo_pipeline=" -b F32 "
+
+# aggregate
+if [ -z "$AGGREGATION" ]; then
+    echo "No aggregation method specified"
+else
+    # check 
+    if [[ "$AGGREGATION" != "day" && "$AGGREGATION" != "mon" && "$AGGREGATION" != "year" ]]; then
+        echo "Unknown aggregation method: $AGGREGATION"
+        exit 1
+    fi
+    agg=$AGGREGATION
+
+    # cumulative variables take sum, others mean
+    if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then # cumulative variables
+        agg+="sum"
+    else
+        agg+="mean"
+    fi
+
+    # add aggregation arguments
+    if [ -z "$AGGREGATION_ARGS" ]; then
+        echo "No aggregation arguments specified"
+    else
+        agg+=",$AGGREGATION_ARGS"
+    fi
+
+    # cumultative variables requires -1 sec shift
+    if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then
+        cdo_pipeline+=" -shifttime,-1sec "
+    fi
+
+    # add to cdo pipeline
+    cdo_pipeline+=" -$agg "
+fi
+
+# regrid
+if [ -z "$REGRID_GRID" ] || [ -z "$REGRID_CDO_FN" ] ; then
+    echo "No regrid method and grid specified"
+else
+    # TODO: check validity but too many possibilities so not implemented
+    # add to cdo pipeline
+    cdo_pipeline+=" -$REGRID_CDO_FN,$REGRID_GRID "
+fi
+
 # get the number of cpu for the job (cpu_per_tasks) from slurm env var
 n_cpus=$SLURM_CPUS_PER_TASK
 echo " * n_cpus: $n_cpus"
 
-# download the data
+# precompute the tmp paths
 tmp_paths=()
+for y in "${YEARS[@]}"; do
+    sub_filename=era5_cds-${variable}-${y}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}.nc
+    sub_tmp_path=$SCRATCH_DATA_DIR/$sub_filename
+    tmp_paths+=($sub_tmp_path)
+done
+echo "Tmp files: ${tmp_paths[@]}"
+
+# download data
 for i in $(seq 0 $n_cpus $(( ${#YEARS[@]} - 1 ))); do
     for j in $(seq 0 $((n_cpus - 1))); do
         index=$((i+j))
@@ -113,65 +196,29 @@ for i in $(seq 0 $n_cpus $(( ${#YEARS[@]} - 1 ))); do
             y=${YEARS[$index]}
 
             # get sub path
-            sub_filename=era5_cds-${variable}-${y}-${FILE_FREQUENCY}-${FILE_RESOLUTION}
-            sub_tmp_path=$TMPDIR/$sub_filename
+            sub_tmp_path=${tmp_paths[$index]}.tmp # .nc.tmp
+
+            echo "Downloading $sub_tmp_path"
 
             # copy options and add arguments
             sub_options=$options
             sub_options+="--years $y "
-            sub_options+="--path $sub_tmp_path.orig.nc "
+            sub_options+="--path $sub_tmp_path "
 
             # launch download
             python ./src/download_era5_cds.py $sub_options
 
-            echo "Successfully downloaded $sub_tmp_path.orig.nc"
-
-            # cdo pipeline
-            cdo_pipeline=" -b F32 "
-
-            # aggregate
-            if [ -z "$AGGREGATION" ]; then
-                echo "No aggregation method specified"
-            else
-                # check 
-                if [[ "$AGGREGATION" != "day" && "$AGGREGATION" != "mon" && "$AGGREGATION" != "year" ]]; then
-                    echo "Unknown aggregation method: $AGGREGATION"
-                    exit 1
-                fi
-                agg=$AGGREGATION
-
-                # check if cumulative variable
-                if [[ " ${CUMULATIVE_VARIABLES[@]} " =~ " ${variable} " ]]; then # cumulative variables
-                    agg+="sum"
-                else
-                    agg+="mean"
-                fi
-
-                # add to cdo pipeline
-                cdo_pipeline+=" -$agg "
-            fi
-
-            # regrid
-            if [ -z "$REGRID_GRID" ] || [ -z "$REGRID_CDO_FN" ] ; then
-                echo "No regrid method and grid specified"
-            else
-                # TODO: check validity but too many possibilities so not implemented
-                # add to cdo pipeline
-                cdo_pipeline+=" -$REGRID_CDO_FN,$REGRID_GRID "
-            fi
+            echo "Successfully downloaded $sub_tmp_path"
 
             # apply cdo pipeline
             echo "Applying cdo pipeline: $cdo_pipeline"
-            cdo $cdo_pipeline $sub_tmp_path.orig.nc $sub_tmp_path.nc
+            cdo $cdo_pipeline $sub_tmp_path ${tmp_paths[$index]} # nc.tmp -> .nc
 
             # check if cdo was successful
-            cdo sinfo $sub_tmp_path.nc
+            cdo sinfo ${tmp_paths[$index]}
 
             # remove original file
-            rm $sub_tmp_path.orig.nc
-
-            # append to tmp_paths
-            tmp_paths+=($sub_tmp_path.nc)
+            rm $sub_tmp_path
         )&
     done
     wait
@@ -186,4 +233,4 @@ cdo mergetime ${tmp_paths[@]} $tmp_path && rm ${tmp_paths[@]}
 echo "Saving to zarr: $final_path"
 python ./src/convert_zarr.py --input_file $tmp_path --output_file $final_path && rm $tmp_path
 
-
+echo "Done."
