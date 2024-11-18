@@ -27,8 +27,8 @@ echo "Launching $num_jobs jobs with $cpus_per_task cpus per task"
 
 # lauch jobs
 sbatch --cpus-per-task=$cpus_per_task \
-       --mem=16G \
-       --time=48:00:00 \
+       --mem=12G \
+       --time=96:00:00 \
        --partition=staging \
        --output=./logs/%A_%a.out \
        --error=./logs/%A_%a.out \

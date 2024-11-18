@@ -1,6 +1,11 @@
 #!/bin/bash
 
+set -euo pipefail
+trap 'echo "An unexpected error occurred. Exiting..."; exit 1' ERR
+
 source ./env/modules.sh
+
+YEARS_PER_REQUEST=5
 
 CUMULATIVE_VARIABLES=(
    "lspf" "large_scale_precipitation_fraction"
@@ -113,7 +118,7 @@ fi
 
 filename="era5_cds_${variable}-${min_year}-${max_year}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}"
 # tmp path
-tmp_path=$SCRATCH_DATA_DIR/$filename.nc
+merged_tmp_path=$SCRATCH_DATA_DIR/$filename.nc
 # final path
 final_path="${DATA_ROOT_DIR}/${OUTPUT_DIR}/${min_year}-${max_year}-${FILE_FREQUENCY}-${FILE_RESOLUTION}/$filename.zarr"
 
@@ -177,32 +182,49 @@ echo " * n_cpus: $n_cpus"
 
 # precompute the tmp paths
 tmp_paths=()
-for y in "${YEARS[@]}"; do
-    sub_filename=era5_cds_${variable}-${y}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}.nc
+echo "Precomputing tmp paths:" 
+for y in $(seq ${YEARS[0]} $YEARS_PER_REQUEST ${YEARS[-1]}); do
+    y_start=$y
+    y_end=$((y_start + YEARS_PER_REQUEST - 1))
+    if [ $y_end -ge ${YEARS[-1]} ]; then
+        y_end=${YEARS[-1]}
+    fi
+    sub_filename=era5_cds_${variable}-${y_start}-${y_end}-${FILE_FREQUENCY}-${AREA_NAME}-${FILE_RESOLUTION}.nc
     sub_tmp_path=$SCRATCH_DATA_DIR/$sub_filename
     tmp_paths+=($sub_tmp_path)
+    echo " * $y_start-$y_end: $sub_tmp_path"
 done
-echo "Tmp files: ${tmp_paths[@]}"
 
 # download data
-for i in $(seq 0 $n_cpus $(( ${#YEARS[@]} - 1 ))); do
+for i in $(seq 0 $((YEARS_PER_REQUEST * n_cpus)) $(( ${#YEARS[@]} - 1 ))); do
     for j in $(seq 0 $((n_cpus - 1))); do
-        index=$((i+j))
+        index=$((i + j * YEARS_PER_REQUEST))
         if [ $index -ge ${#YEARS[@]} ]; then
             break
         fi
         (
-            # get the year
-            y=${YEARS[$index]}
-
+            # get the start and end year
+            y_start=${YEARS[$index]}
+            y_end=$((y_start + YEARS_PER_REQUEST - 1))
+            if [ $y_end -ge ${YEARS[-1]} ]; then
+                y_end=${YEARS[-1]}
+            fi
+            
             # get sub path
-            sub_tmp_path=${tmp_paths[$index]}.tmp # .nc.tmp
+            sub_tmp_path=${tmp_paths[$((index / YEARS_PER_REQUEST))]}.tmp
+            tmp_path=${tmp_paths[$((index / YEARS_PER_REQUEST))]}
 
-            echo "Downloading $sub_tmp_path"
+            echo "Downloading years $y_start to $y_end"
+
+             # get all years in a string
+            all_years=""
+            for y in $(seq $y_start 1 $y_end); do
+                all_years+="$y "
+            done
 
             # copy options and add arguments
             sub_options=$options
-            sub_options+="--years $y "
+            sub_options+="--years $all_years "
             sub_options+="--path $sub_tmp_path "
 
             # launch download
@@ -212,25 +234,27 @@ for i in $(seq 0 $n_cpus $(( ${#YEARS[@]} - 1 ))); do
 
             # apply cdo pipeline
             echo "Applying cdo pipeline: $cdo_pipeline"
-            cdo $cdo_pipeline $sub_tmp_path ${tmp_paths[$index]} # nc.tmp -> .nc
+            cdo $cdo_pipeline $sub_tmp_path $tmp_path # nc.tmp -> .nc
+            echo "Successfully applied cdo pipeline to $tmp_path"
 
             # check if cdo was successful
-            cdo sinfo ${tmp_paths[$index]}
+            cdo sinfo $tmp_path
 
             # remove original file
             rm $sub_tmp_path
         )&
     done
     wait
-    echo "Done with year $y"
+    echo "Done with years $y_start to $y_end"
 done
 
 # mergetime and delete
-echo "Merging files: ${tmp_paths[@]}"
-cdo mergetime ${tmp_paths[@]} $tmp_path && rm ${tmp_paths[@]}
+echo "Merging tmp files..."
+cdo mergetime ${tmp_paths[@]} $merged_tmp_path && rm ${tmp_paths[@]}
+echo "Successfully merged tmp files to $merged_tmp_path"
 
 # compress and delete
 echo "Saving to zarr: $final_path"
-python ./src/convert_zarr.py --input_file $tmp_path --output_file $final_path && rm $tmp_path
+python ./src/convert_zarr.py --input_file $merged_tmp_path --output_file $final_path && rm $merged_tmp_path
 
 echo "Done."
