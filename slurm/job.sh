@@ -73,7 +73,7 @@ min_year=${YEARS[0]}
 max_year=${YEARS[0]}
 for y in "${YEARS[@]}"; do 
     (( y < min_year )) && min_year=$y
-    (( y > max )) && max_year=$y
+    (( y > max_year )) && max_year=$y
 done
 
 # get job options
@@ -122,11 +122,11 @@ merged_tmp_path=$SCRATCH_DATA_DIR/$filename.nc
 # final path
 final_path="${DATA_ROOT_DIR}/${OUTPUT_DIR}/${min_year}-${max_year}-${FILE_FREQUENCY}-${FILE_RESOLUTION}/$filename.zarr"
 
-mkdir -p `dirname $tmp_path`
+mkdir -p `dirname $merged_tmp_path`
 mkdir -p `dirname $final_path`
 
 echo "Paths:"
-echo " * tmp path: $tmp_path"
+echo " * tmp path: $merged_tmp_path"
 echo " * final path: $final_path"
 
 # get cdo pipeline
