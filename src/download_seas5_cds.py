@@ -49,7 +49,7 @@ ALL_MONTHS = [
     '07', '08', '09',
     '10', '11', '12',
 ]
-SEAS5_FREQ = pd.Timedelta("12h")
+SEAS5_FREQ = pd.Timedelta("6h")
 
 def download(
     path: str,

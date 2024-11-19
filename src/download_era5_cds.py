@@ -134,28 +134,6 @@ if __name__ == "__main__":
     # check no more than 1 var
     if len(args.variables) > 1:
         raise NotImplementedError("Only one variable can be downloaded at a time.")
-    
-    # # check if we are in a slurm array
-    # index = os.environ.get("SLURM_ARRAY_TASK_ID", None)
-    # if index is not None:
-    #     index = int(index)
-    #     logger.info(f"Running job {index}.")
-    #     # get array strategy
-    #     array_strategy = config.get("array_strategy")
-    #     assert array_strategy, "array_strategy must be specified in the config."
-    #     array_strategy_arguments = config.get("array_strategy_arguments", {})
-    #     # retrieve job subconfig
-    #     logger.info(f"Retrieving job configuration for array strategy: {array_strategy}.")
-    #     if array_strategy == "single_year_single_var_all_levels":
-    #         config = single_year_single_var_all_levels(config, index=index, **array_strategy_arguments)
-    #     elif array_strategy == "n_years_single_var_all_levels":
-    #         config = n_years_single_var_all_levels(config, index=index, **array_strategy_arguments)
-    #     else:
-    #         raise ValueError(f"Unknown array strategy: {array_strategy}.")
-        
-    # # change output directory to path
-    # fn = f"era5_cds_{'-'.join(config['variables'])}-{min(config['years'])}-{max(config['years'])}.nc"
-    # config["path"] = os.path.join(config["output_dir"], fn)
         
     # check that year is in 1940-now.year
     for y in args.years:

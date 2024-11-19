@@ -5,7 +5,7 @@ trap 'echo "An unexpected error occurred. Exiting..."; exit 1' ERR
 
 source ./env/modules.sh
 
-YEARS_PER_REQUEST=5
+YEARS_PER_REQUEST=2
 
 CUMULATIVE_VARIABLES=(
    "lspf" "large_scale_precipitation_fraction"
