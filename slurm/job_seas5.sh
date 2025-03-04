@@ -213,15 +213,23 @@ for i in $(seq 0 $((YEARS_PER_REQUEST * n_cpus)) $(( ${#YEARS[@]} - 1 ))); do
                 echo "Successfully downloaded $sub_tmp_path"
 
                 # apply cdo pipeline
-                echo "Applying cdo pipeline: $cdo_pipeline"
-                cdo $cdo_pipeline $sub_tmp_path $tmp_path # nc.tmp -> .nc
-                echo "Successfully applied cdo pipeline to $tmp_path"
+                # empty pipeline
+                if [ "$cdo_pipeline" == " -b F32 " ]; then
+                    echo "No cdo pipeline specified, moving file to $tmp_path"
+                    mv $sub_tmp_path $tmp_path
+                else
+                    echo "Applying cdo pipeline: $cdo_pipeline"
+                    cdo $cdo_pipeline $sub_tmp_path $tmp_path # nc.tmp -> .nc
+                    echo "Successfully applied cdo pipeline to $tmp_path"
+                fi
 
-                # check if cdo was successful
-                cdo sinfo $tmp_path
+                # check if the dataset is readable successful
+                echo $(python -c "import xarray as xr ; ds=xr.open_dataset('$tmp_path', engine='netcdf4') ; print(str(list(ds.coords.keys()))+','+str(list(ds.data_vars.keys())))")
 
-                # remove original file
-                rm $sub_tmp_path
+                # remove original file if exists
+                if [ -f $sub_tmp_path ]; then
+                    rm $sub_tmp_path
+                fi
             done
         )&
     done
@@ -229,14 +237,8 @@ for i in $(seq 0 $((YEARS_PER_REQUEST * n_cpus)) $(( ${#YEARS[@]} - 1 ))); do
     echo "Done with years $y_start to $y_end and months $m_start to $m_end"
 done
 
-# mergetime and delete
-echo "Merging tmp files..."
-cdo mergetime ${tmp_paths[@]} $merged_tmp_path && rm ${tmp_paths[@]}
-echo "Successfully merged tmp files to $merged_tmp_path"
-
-# compress and delete
-# compress and delete
-echo "Saving to zarr: $final_path"
-python ./src/convert_zarr.py --input_file $merged_tmp_path --output_file $final_path && rm $merged_tmp_path
+# merge, compress, delete
+echo "Merging and saving to zarr: $final_path"
+python ./src/convert_zarr.py --input ${tmp_paths[@]} --output $final_path && rm ${tmp_paths[@]}
 
 echo "Done."

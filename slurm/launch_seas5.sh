@@ -1,6 +1,6 @@
 #!/bin/bash
-MAX_CPUS=2
-MAX_CONCURRENT_JOBS=1
+MAX_CPUS=3
+MAX_CONCURRENT_JOBS=4
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -28,7 +28,7 @@ echo "Launching $num_jobs jobs with $cpus_per_task cpus per task"
 
 # lauch jobs
 sbatch --cpus-per-task=$cpus_per_task \
-       --mem=4G \
+       --mem=32G \
        --time=120:00:00 \
        --partition=staging \
        --output=./logs/seas5/%A_%a.out \

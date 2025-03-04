@@ -19,3 +19,4 @@ draft.*
 *.draft.*
 drafts
 *.nc
+*.zarr

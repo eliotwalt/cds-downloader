@@ -1,5 +1,6 @@
 import argparse
 import xarray as xr
+import dask
 import os
 import sys
 import shutil
@@ -42,15 +43,23 @@ def write_zarr(ds: xr.Dataset, path: str, exist_ok: bool=False):
     
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--input_file", type=str, help="Input file, usually a .nc file", required=True)
-    p.add_argument("--output_file", type=str, help="Output file, usually a .zarr file", required=True)
+    p.add_argument("--input", type=str, nargs="+", help="Input file(s), usually .nc file(s)", required=True)
+    p.add_argument("--output", type=str, help="Output file, usually a .zarr file", required=True)
+    p.add_argument("--threads", type=int, help="Number of threads to use for reading the dataset", default=None)
     args = p.parse_args()
     
-    logger.info(f"Reading dataset from {args.input_file}")
-    ds = xr.open_dataset(args.input_file, chunks={})
+    if args.threads is not None:
+        dask.config.set(scheduler="threads", num_workers=args.threads)
+    
+    logger.info(f"Reading dataset from {args.input}")
+    if len(args.input) == 1:
+        ds = xr.open_dataset(args.input, chunks={})
+    else:
+        ds = xr.open_mfdataset(args.input, combine="by_coords", chunks={})
     
     logger.info(f"Cleaning up dataset\n{ds.data_vars}") 
-    if "valid_time" in ds and "time" not in ds:
+    # ERA5 only
+    if "forecast_reference_time" not in ds and "valid_time" in ds and "time" not in ds:
         ds = ds.rename({"valid_time": "time"})
         
     if "lat" in ds and "latitude" not in ds:
@@ -63,8 +72,8 @@ if __name__ == "__main__":
         ds = ds.drop_vars("valid_time_bnds")
     logger.info(f"Cleaned dataset\n{ds.data_vars}")
     
-    logger.info(f"Writing dataset to {args.output_file}")
-    write_zarr(ds, args.output_file, exist_ok=True)
+    logger.info(f"Writing dataset to {args.output}")
+    write_zarr(ds, args.output, exist_ok=True)
     logger.info("Done!")
     
     sys.exit(0)

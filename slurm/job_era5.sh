@@ -176,6 +176,11 @@ else
     cdo_pipeline+=" -$REGRID_CDO_FN,$REGRID_GRID "
 fi
 
+# empty pipeline
+if [ "$cdo_pipeline" == " -b F32 " ]; then
+    cdo_pipeline+="copy "
+fi
+
 # get the number of cpu for the job (cpu_per_tasks) from slurm env var
 n_cpus=$SLURM_CPUS_PER_TASK
 echo " * n_cpus: $n_cpus"
@@ -237,8 +242,9 @@ for i in $(seq 0 $((YEARS_PER_REQUEST * n_cpus)) $(( ${#YEARS[@]} - 1 ))); do
             cdo $cdo_pipeline $sub_tmp_path $tmp_path # nc.tmp -> .nc
             echo "Successfully applied cdo pipeline to $tmp_path"
 
-            # check if cdo was successful
-            cdo sinfo $tmp_path
+            # check if the dataset is readable successful
+            echo $(python -c "import xarray as xr ; ds=xr.open_dataset('$tmp_path', engine='netcdf4') ; print(str(list(ds.coords.keys()))+','+str(list(ds.data_vars.keys())))")
+
 
             # remove original file
             rm $sub_tmp_path
@@ -255,6 +261,6 @@ echo "Successfully merged tmp files to $merged_tmp_path"
 
 # compress and delete
 echo "Saving to zarr: $final_path"
-python ./src/convert_zarr.py --input_file $merged_tmp_path --output_file $final_path && rm $merged_tmp_path
+python ./src/convert_zarr.py --input $merged_tmp_path --output $final_path --threads $(( num_cpu * 2 )) && rm $merged_tmp_path
 
 echo "Done."
